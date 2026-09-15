@@ -1,0 +1,307 @@
+---
+title: "Economics 1"
+author: "Nicolás Páez"
+date: "2026-09-15"
+output: html_document
+---
+
+# 1. Paquetes
+
+```{r instalar-paquetes, eval=FALSE}
+install.packages(c(
+  "here",
+  "readxl",
+  "dplyr",
+  "tseries",
+  "urca"
+))
+```
+
+# Cargamos los paquetes necesarios para el analísis
+
+```{r cargar-paquetes, message=FALSE, warning=FALSE}
+library(here)
+library(readxl)
+library(dplyr)
+library(tseries)
+library(urca)
+```
+
+# 2. Comprobamos las rutas del proyecto
+
+´here()´identifica automaticamente la carpeta principal del proyecto de Rstudio
+
+```{r comprobar-rutas}
+# Mostrar la raíz del proyecto 
+here()
+
+# Mostrar los archivos disponibles en la carpeta data
+list.files(here("data"))
+```
+# 3. Definir las rutas de los archivos
+
+```{r definir-rutas}
+ruta_imacec <- here(
+  "data",
+  "CCNN2018_IMACEC_01_A.xlsx"
+)
+
+ruta_ipc <- here(
+  "data", 
+  "IPC_1998_100_MEDSUBY(2).xlsx"
+)
+
+# Comprobemos si existen esas rutas, y que no estamos cometiendo un error
+
+file.exists(ruta_imacec)
+file.exists(ruta_ipc)
+```
+
+# 4. Cargar y limpiar los datos
+
+```{r cargar-datos}
+
+# Cargar el IMACEC
+
+imacec <- read_excel(
+  path = ruta_imacec,
+  sheet = "Chart",
+  skip = 2 
+) %>% 
+  setNames(c("Fecha", "Imacec")) %>% 
+  mutate(
+    Fecha = as.Date(Fecha),
+    Imacec = as.numeric(Imacec)
+  ) %>% 
+  filter(
+    !is.na(Fecha),
+    !is.na(Imacec)
+  )
+
+# Cargar el IPC
+
+ipc <- read_excel(
+  path = ruta_ipc,
+  sheet = "Cuadro",
+  skip = 2
+) %>% 
+  setNames(c("Fecha", "IPC")) %>% 
+  mutate(
+    Fecha = as.Date(Fecha),
+    IPC = as.numeric(IPC)
+  ) %>% 
+  filter(
+    !is.na(Fecha),
+    !is.na(IPC)
+  )
+```
+
+# 5. Revisamos los datos cargados
+
+```{r revisar-datos}
+
+# Primeras observaciones
+head(imacec)
+head(ipc)
+
+# Ultimas observaciones
+
+tail(imacec)
+tail(ipc)
+
+# Numero de observaciones
+
+nrow(imacec)
+nrow(ipc)
+
+# Comprobar que no quedan NA
+
+colSums(is.na(imacec))
+colSums(is.na(ipc))
+```
+
+# 6. Crear las series de tiempo
+
+Ambas variables tienen una frecuencia mensual, por lo que 
+Utilizamos ´frequency = 12´.
+
+```{r crear-serie}
+
+# IMACEC: Comienza en enero de 1996
+
+imacec_ts <- ts(
+  imacec$Imacec,
+  start = c(1996, 1),
+  frequency = 12
+)
+
+# IPC: Comienza en diciembre de 1978
+
+ipc_ts <- ts(
+  ipc$IPC,
+  start = c(1978, 12),
+  frequency = 12
+)
+```
+
+
+# 7. Graficamos las series de tiempo (time series)
+
+
+```{r graficar-series, fig.width= 9, fig.height= 7}
+par(mfrow = c(2, 1))
+
+plot(
+  imacec_ts,
+  main = "Serie mensual del IMACEC Chile",
+  xlab = "Año",
+  ylab = "Indice",
+  col = "darkblue",
+  lwd = 1.5
+)
+
+
+plot(
+  ipc_ts,
+  main = "Serie mensual del IPC Chile",
+  xlab = "Año",
+  ylab = "Indice",
+  col = "darkred",
+  twd = 1.5
+)
+
+par(mfrow = c(1, 1))
+```
+
+# 8. Unimos ahora las 2 bases por fecha
+
+´inner_join()´ conserva exclusivamente los meses disponibles en ambas bases.
+
+
+```{r unir-bases}
+
+datos_econometria <- inner_join(
+  imacec,
+  ipc,
+  by = "Fecha"
+)
+
+head(datos_econometria)
+tail(datos_econometria)
+
+# Numero de meses compartidos 
+
+nrow(datos_econometria)
+
+# Comprobamos la ausencia de NA
+
+colSums(is.na(datos_econometria))
+```
+
+
+# 9. Graficar el período común entre estas bases
+
+
+```{r periodo-comun, fig.width=9, fig.height=7}
+par(mfrow = c(2, 1))
+
+
+plot(
+  datos_econometria$Fecha,
+  datos_econometria$Imacec,
+  type = "l",
+  main = "IMACEC durante periodo común",
+  xlab = "Fecha",
+  ylab = "Indice",
+  col = "darkblue",
+  lwd = 1.5
+)
+
+
+
+plot(
+  datos_econometria$Fecha,
+  datos_econometria$IPC,
+  type = "l",
+  main = "IPC durante periodo común",
+  xlab = "Fecha",
+  ylab = "Indice",
+  col = "darkred",
+  lwd = 1.5
+)
+
+par(mfrow = c(1, 1))
+```
+
+
+# 10. Pruebas ADF de raíz unitaria
+
+La prueba de "Dickey-Fuller" aumentada plantea:
+
+- \(H_0\): La serie posee una raíz unitaria y no es estacionaria.
+- \(H_1\): La serie no posee una raíz unitaria y es estacionaria.
+
+# Prueba ADF para el IMACEC
+
+```{r adf-imacec}
+adf.test(imacec_ts)
+```
+
+# Prueba ADF para el IPC
+
+
+```{r adf-ipc}
+adf.test(ipc_ts)
+```
+
+# 11. Test de Dickey-Fuller sin rezagos para el IMACEC
+
+La especificación ´type = "drift"´ incluye una constante.
+
+El argumetno ´lags = 0´ indica que no se incorporan diferencias rezagadas adicionales.
+
+
+```{r df-sin-rezagos}
+
+prueba_sin_rezagos <- ur.df(
+  imacec$Imacec,
+  type = "drift",
+  lags = 0
+)
+
+summary(prueba_sin_rezagos)
+```
+
+
+# 12. Funciones de autocorrelación
+
+## ACF del IMACEC
+
+
+```{r acf-imacec, fig.width=9, fig.height=7}
+
+acf(
+  imacec$Imacec,
+  lag.max = 24,
+  main = "ACF del IMACEC en niveles",
+  xlab = "Rezagos"
+)
+```
+
+
+### ACF del IPC
+
+
+```{r acf-ipc, fig.width=9, fig.height=7}
+
+acf(
+  ipc$IPC,
+  lag.max = 24,
+  main = "ACF IPC en niveles",
+  xlab = "Rezagos"
+)
+```
+
+# ---------------------------- Fin Script -----------------------------------
+##---------------------------------------------------------------------------
+
